@@ -78,7 +78,7 @@ TEST(StarterTest, DISABLED_TrieNodeRemoveTest) {
   EXPECT_EQ(child_node, nullptr);
 }
 
-TEST(StarterTest, DISABLED_TrieInsertTest) {
+TEST(StarterTest, TrieInsertTest) {
   {
     Trie trie;
     trie.Insert<std::string>("abc", "d");
@@ -122,6 +122,22 @@ TEST(StarterTest, DISABLED_TrieInsertTest) {
     EXPECT_EQ(trie.GetValue<int>("a", &success), 5);
     EXPECT_EQ(success, true);
     EXPECT_EQ(trie.GetValue<std::string>("aa", &success), "val");
+    EXPECT_EQ(success, true);
+
+    trie.GetValue<int>("aaaa", &success);
+    EXPECT_EQ(success, false);
+  }
+  // situation: key exists but terminal node is TrieNode (should do the conversion)
+  {
+    Trie trie;
+    bool success = trie.Insert<int>("aa", 5);
+    EXPECT_EQ(success, true);
+    success = trie.Insert<std::string>("a", "val");
+    EXPECT_EQ(success, true);
+
+    EXPECT_EQ(trie.GetValue<int>("aa", &success), 5);
+    EXPECT_EQ(success, true);
+    EXPECT_EQ(trie.GetValue<std::string>("a", &success), "val");
     EXPECT_EQ(success, true);
 
     trie.GetValue<int>("aaaa", &success);
