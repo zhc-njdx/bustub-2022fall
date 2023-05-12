@@ -180,7 +180,71 @@ class ExtendibleHashTable : public HashTable<K, V> {
    * @brief Redistribute the kv pairs in a full bucket.
    * @param bucket The bucket to be redistributed.
    */
-  auto RedistributeBucket(std::shared_ptr<Bucket> bucket) -> void;
+  auto RedistributeBucket(size_t index) -> void {
+    // in this condition, a bucket is referenced by serveral dir_ entry (at least 2)
+    // split the bucket means using the local_depth can not distinguish the element, the local_depth
+    // need to increase, so it can be referenced by less dir_ entry, so we need to create the new bucket
+    // for the other dir_ entry
+
+    int local_depth = GetLocalDepthInternal(index);   // the current local_depth
+    int local_depth_before = local_depth - 1;         // local_depth before increasing
+    int origin_mask = (1 << local_depth_before) - 1;  // the mask of the local_depth_before
+    int mask = (1 << local_depth) - 1;                // the mask of the local_depth_current
+
+    size_t origin_suffix = index & origin_mask;                  // origin suffix: x..x
+    size_t suffix1 = origin_suffix;                              // 0x..x
+    size_t suffix2 = (1 << local_depth_before) + origin_suffix;  // 1x..x
+
+    std::shared_ptr<Bucket> bucket = dir_[index];  // referenced by dir_[suffix=0x..x]
+    std::shared_ptr<Bucket> new_bucket =
+        std::make_shared<Bucket>(bucket_size_, local_depth);  // referenced by dir_[suffix=1x..x]
+
+    // make the dir_ entry point to the right bucket
+    for (size_t i = 0; i < dir_.size(); i++) {
+      if ((mask & i) == suffix1) {
+        dir_[i] = bucket;
+      } else if ((mask & i) == suffix2) {
+        dir_[i] = new_bucket;
+      }
+    }
+
+    IncrementNumBuckets();  // the number of bucket increase
+
+    auto list = bucket->GetItems();
+    for (auto it = list.begin(); it != list.end(); it++) {
+      if (IndexOfDepth(it->first, local_depth) == suffix2) {
+        bucket->Remove(it->first);
+        new_bucket->Insert(it->first, it->second);
+      }
+    }
+  }
+
+  /**
+   * @brief based on `depth` to calc the index of the `key`
+   */
+  auto IndexOfDepth(const K &key, int depth) -> size_t {
+    int mask = (1 << depth) - 1;
+    return std::hash<K>()(key) & mask;
+  }
+
+  /**
+   * @brief Increment the global depth and double the size of the directory
+   */
+  auto IncrementGlobalDepth() -> void { global_depth_++; }
+
+  auto IncrementNumBuckets() -> void { num_buckets_++; }
+
+  /**
+   * @brief double the capacity of the dir_
+   */
+  auto DoubleCapacity() -> void {
+    size_t new_size = dir_.size() * 2;
+    dir_.resize(new_size);  // double the size of the directory (not the number of buckets)
+    // make the new dir_[i] point to the right bucket
+    for (size_t i = 0; i < new_size / 2; i++) {
+      dir_[i + (1 << (global_depth_ - 1))] = dir_[i];  // 0xx -> xx and 1xx -> xx
+    }
+  }
 
   /*****************************************************************
    * Must acquire latch_ first before calling the below functions. *
