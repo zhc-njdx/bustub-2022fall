@@ -21,7 +21,68 @@
 #include "common/config.h"
 #include "common/macros.h"
 
+static const size_t INF = std::numeric_limits<size_t>::max();
+
 namespace bustub {
+
+class Frame {
+  public:
+    Frame(frame_id_t id, size_t k) : id_(id), k_(k) {}
+
+    ~Frame() = default;
+
+    inline bool IsEvictable() { return evictable_; }
+
+    inline frame_id_t GetFrameId() { return id_; }
+
+    /**
+     * @brief calculate the backward k distance
+     * @param current_timestamp the current timestamp
+     * @return if the frame has k access records, return the backward k distance calculated
+     *         otherwise, return INF
+    */
+    size_t CalcBackwardKDistance(size_t current_timestamp) {
+      if (access_history_.size() == k_) { // has k access records
+        return current_timestamp - access_history_.back();
+      } else {
+        return INF;
+      }
+    }
+
+    size_t GetEarliestAccessTimestamp() {
+      return access_history_.back();
+    }
+
+    /**
+     * @brief set the frame whether evictable or not
+     * @param evictable true / false
+     * @return from non-evictable to evictable, return 1 (means size of replacer increment by 1)
+     *         from evictable to non-evictable, return -1(means size of replacer decrement by 1)
+    */
+    size_t SetEvictable(bool evictable) {
+      if (!evictable_ && evictable) { // non-evictable -> evictable
+        evictable_ = evictable;
+        return 1;
+      } else if (evictable_ && !evictable) { // evictable -> non-evictable
+        evictable_ = evictable;
+        return -1;
+      }
+      return 0;
+    }
+
+    void RecordAccess(size_t timestamp) {
+      access_history_.push_front(timestamp);
+      if (access_history_.size() > k_) {
+        access_history_.pop_back();
+      }
+    }
+
+  private:
+    frame_id_t id_;
+    bool evictable_{false};
+    size_t k_;
+    std::list<size_t> access_history_;
+};
 
 /**
  * LRUKReplacer implements the LRU-k replacement policy.
@@ -133,6 +194,13 @@ class LRUKReplacer {
   auto Size() -> size_t;
 
  private:
+
+  void RemoveEvictableFrameById(frame_id_t frame_id) {
+    list_.erase(map_[frame_id]);
+    map_.erase(frame_id);
+    curr_size_--;
+  }
+  
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
   size_t current_timestamp_{0};
@@ -140,94 +208,9 @@ class LRUKReplacer {
   size_t replacer_size_;
   size_t k_;
   std::mutex latch_;
-  std::unordered_map<frame_id_t, Frame*> map_;
-  std::list<Frame*> list_; // double linked list
+  std::unordered_map<frame_id_t, std::list<Frame>::iterator> map_;
+  std::list<Frame> list_; // double linked list
 };
 
-class Frame {
-  public:
-    Frame(frame_id_t id, size_t k) : id_(id) {
-      access_history_ = new AccessHistory(k);
-    }
-
-    inline bool IsEvictable() { return evictable_; }
-
-    size_t SetEvictable(bool evictable) {
-      if (!evictable_ && evictable) {
-        evictable_ = evictable;
-        return 1;
-      } else if (evictable_ && !evictable) {
-        evictable_ = evictable;
-        return -1;
-      }
-    }
-
-    void RecordAccess(size_t timestamp) {
-      access_history_->AddAccessRecord(timestamp);
-    }
-
-  private:
-    frame_id_t id_;
-    bool evictable_{false};
-    long backward_k_distance_{0};
-    AccessHistory* access_history_;
-};
-
-class AccessHistory {
-  public:
-    AccessHistory(size_t k) : k_(k) {
-      head = new Entry(-1);
-      tail = new Entry(-1);
-      head->SetNext(tail);
-      tail->SetPrev(head);
-    }
-
-    inline size_t Size() { return size_; }
-
-    size_t GetKthAccessTimestamp() {
-      if (size_ < k_) return std::numeric_limits<size_t>::max(); // less than k, return +inf
-      return tail->GetPrev()->GetTimestamp();
-    }
-
-    void AddAccessRecord(size_t timestamp) {
-      Entry* entry = new Entry(timestamp);
-      // insert into head
-      head->GetNext()->SetPrev(entry);
-      entry->SetNext(head->GetNext());
-      head->SetNext(entry);
-      entry->SetPrev(head);
-      // increment the size_
-      size_++;
-      if (size_ <= k_) {
-        return;
-      }
-      // remove the last entry
-      Entry* tmp = tail->GetPrev();
-      tmp->GetPrev()->SetNext(tail);
-      tail->SetPrev(tmp->GetPrev());
-      size_--;
-      delete(tmp);
-    }
-
-  class Entry {
-    public:
-      Entry(size_t timestamp) : timestamp_(timestamp) {}
-      inline void SetNext(Entry* next) { next_ = next; }
-      inline void SetPrev(Entry* prev) { prev_ = prev; }
-      inline Entry* GetNext() { return next_; }
-      inline Entry* GetPrev() { return prev_; }
-      inline size_t GetTimestamp() { return timestamp_; }
-    private:
-      size_t timestamp_;
-      Entry* next_{nullptr};
-      Entry* prev_{nullptr};
-  };
-
-  private:
-    Entry* head;
-    Entry* tail;
-    size_t size_{0};
-    size_t k_; // record k access
-};
 
 }  // namespace bustub
