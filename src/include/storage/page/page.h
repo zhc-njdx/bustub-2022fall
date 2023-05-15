@@ -66,13 +66,20 @@ class Page {
   /** Sets the page LSN. */
   inline void SetLSN(lsn_t lsn) { memcpy(GetData() + OFFSET_LSN, &lsn, sizeof(lsn_t)); }
 
+  void Reset() {
+    ResetMemory();
+    is_dirty_ = false;
+    pin_count_ = 0;
+    page_id_ = INVALID_PAGE_ID;
+  }
+
  protected:
   static_assert(sizeof(page_id_t) == 4);
   static_assert(sizeof(lsn_t) == 4);
 
   static constexpr size_t SIZE_PAGE_HEADER = 8;
   static constexpr size_t OFFSET_PAGE_START = 0;
-  static constexpr size_t OFFSET_LSN = 4;
+  static constexpr size_t OFFSET_LSN = 4; // LSN: Log Sequence Number
 
  private:
   /** Zeroes out the data that is held within the page. */
