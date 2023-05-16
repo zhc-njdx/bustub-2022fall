@@ -177,5 +177,12 @@ class BufferPoolManagerInstance : public BufferPoolManager {
   }
 
   // TODO(student): You may add additional private members and helper functions
+
+  void ResetPage(frame_id_t frame_id) {
+    pages_[frame_id].ResetMemory();
+    pages_[frame_id].is_dirty_ = false;
+    pages_[frame_id].page_id_ = INVALID_PAGE_ID;
+    pages_[frame_id].pin_count_ = 0;
+  }
 };
 }  // namespace bustub
