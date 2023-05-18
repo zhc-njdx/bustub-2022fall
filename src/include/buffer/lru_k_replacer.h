@@ -75,6 +75,8 @@ class Frame {
     }
   }
 
+  void ClearAccessHistory() { access_history_.clear(); }
+
  private:
   frame_id_t id_;
   bool evictable_{false};
@@ -190,6 +192,17 @@ class LRUKReplacer {
    * @return size_t
    */
   auto Size() -> size_t;
+
+  /**
+   * @brief clear the access history of the Frame assigned by frame_id
+   *
+   * when do the page replacement in buffer pool, before new page insert into frame
+   * the access history of old page in frame should be removed
+   * and remember to set the frame non-evictable, because it will be pinned
+   *
+   * @param frame_id id of the frame that need to remove the access history
+   */
+  void ClearAccessHistory(frame_id_t frame_id);
 
  private:
   void RemoveEvictableFrameById(frame_id_t frame_id) {

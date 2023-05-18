@@ -22,7 +22,7 @@ BufferPoolManagerInstance::BufferPoolManagerInstance(size_t pool_size, DiskManag
                                                      LogManager *log_manager)
     : pool_size_(pool_size), disk_manager_(disk_manager), log_manager_(log_manager) {
   // we allocate a consecutive memory space for the buffer pool
-  LOG_INFO("The buffer_pool_manager_instance has created, the pool_size is %zu.\n", pool_size);
+  // LOG_INFO("The buffer_pool_manager_instance has created, the pool_size is %zu.\n", pool_size);
   pages_ = new Page[pool_size_];
   page_table_ = new ExtendibleHashTable<page_id_t, frame_id_t>(bucket_size_);
   replacer_ = new LRUKReplacer(pool_size, replacer_k);
@@ -63,7 +63,7 @@ BufferPoolManagerInstance::~BufferPoolManagerInstance() {
  */
 auto BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) -> Page * {
   latch_.lock();
-  LOG_INFO("Want to New Page, ");
+  // LOG_INFO("Want to New Page, ");
   frame_id_t frame_id;
   if (!free_list_.empty()) {  // has the free frame id
     frame_id = free_list_.front();
@@ -74,36 +74,37 @@ auto BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) -> Page * {
     page_table_->Insert(*page_id, frame_id);  // create the new mapping
     pages_[frame_id].pin_count_ = 1;
     replacer_->RecordAccess(frame_id);
-    replacer_->SetEvictable(frame_id, false);
-    LOG_INFO("using free frame_id %d ", frame_id);
-    LOG_INFO("to new page %d\n", *page_id);
+    // replacer_->SetEvictable(frame_id, false); don't need because the evictable is false default
+    // LOG_INFO("using free frame_id %d ", frame_id);
+    // LOG_INFO("to new page %d\n", *page_id);
     latch_.unlock();
     return &pages_[frame_id];
   }
   if (replacer_->Evict(&frame_id)) {  // no free frame but can evict a frame from replacer
     // write the dirty page
     if (pages_[frame_id].IsDirty()) {
-      LOG_INFO("write back to the disk");
-      disk_manager_->WritePage(pages_[frame_id].GetPageId(), pages_[frame_id].GetData());
+      // LOG_INFO("write back to the disk");
+      disk_manager_->WritePage(pages_[frame_id].page_id_, pages_[frame_id].data_);
     }
-    LOG_INFO("evicting the page %d in frame %d ", pages_[frame_id].GetPageId(), frame_id);
-    page_table_->Remove(pages_[frame_id].GetPageId());  // remove the previous mapping
-    replacer_->Remove(frame_id);                        // remove the access history for this page
+    // LOG_INFO("evicting the page %d in frame %d ", pages_[frame_id].GetPageId(), frame_id);
+    page_table_->Remove(pages_[frame_id].page_id_);  // remove the previous mapping
+    // replacer_->Remove(frame_id);                        // remove the access history for this page
+    replacer_->ClearAccessHistory(frame_id);  // just clear the access history of the frame
 
     ResetPage(frame_id);
 
     *page_id = AllocatePage();
-    LOG_INFO("to new page %d\n", *page_id);
+    // LOG_INFO("to new page %d\n", *page_id);
     pages_[frame_id].page_id_ = *page_id;
     page_table_->Insert(*page_id, frame_id);  // overwrite the mapping
     pages_[frame_id].pin_count_ = 1;
     replacer_->RecordAccess(frame_id);
-    replacer_->SetEvictable(frame_id, false);
+    // replacer_->SetEvictable(frame_id, false);
 
     latch_.unlock();
     return &pages_[frame_id];
   }
-  LOG_INFO("fail\n");
+  // LOG_INFO("fail\n");
   latch_.unlock();
   return nullptr;
 }
@@ -126,16 +127,16 @@ auto BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) -> Page * {
  */
 auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
   latch_.lock();
-  LOG_INFO("Want to fetch the page %d ", page_id);
+  // LOG_INFO("Want to fetch the page %d ", page_id);
   frame_id_t frame_id;
   if (page_table_->Find(page_id, frame_id)) {  // find the page and return the pointer
     replacer_->RecordAccess(frame_id);
     pages_[frame_id].pin_count_++;
-    if (pages_[frame_id].GetPinCount() > 0) {  // pinned
-      LOG_INFO("(set non-evictable)");
+    if (pages_[frame_id].pin_count_ > 0) {  // pinned
+      // LOG_INFO("(set non-evictable)");
       replacer_->SetEvictable(frame_id, false);
     }
-    LOG_INFO("find\n");
+    // LOG_INFO("find\n");
     latch_.unlock();
     return &pages_[frame_id];
   }
@@ -147,21 +148,22 @@ auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
     page_table_->Insert(page_id, frame_id);  // create the new mapping
     pages_[frame_id].pin_count_ = 1;         // initialize to 1
     replacer_->RecordAccess(frame_id);
-    replacer_->SetEvictable(frame_id, false);
+    // replacer_->SetEvictable(frame_id, false);
 
-    disk_manager_->ReadPage(page_id, pages_[frame_id].GetData());
-    LOG_INFO("using free frame %d\n", frame_id);
+    disk_manager_->ReadPage(page_id, pages_[frame_id].data_);
+    // LOG_INFO("using free frame %d\n", frame_id);
     latch_.unlock();
     return &pages_[frame_id];
   }
   if (replacer_->Evict(&frame_id)) {
     if (pages_[frame_id].IsDirty()) {
-      LOG_INFO("write back to the disk");
-      disk_manager_->WritePage(pages_[frame_id].GetPageId(), pages_[frame_id].GetData());
+      // LOG_INFO("write back to the disk");
+      disk_manager_->WritePage(pages_[frame_id].page_id_, pages_[frame_id].data_);
     }
-    LOG_INFO("evicting the page %d in frame %d\n", pages_[frame_id].GetPageId(), frame_id);
-    page_table_->Remove(pages_[frame_id].GetPageId());  // remove the previous mapping
-    replacer_->Remove(frame_id);
+    // LOG_INFO("evicting the page %d in frame %d\n", pages_[frame_id].GetPageId(), frame_id);
+    page_table_->Remove(pages_[frame_id].page_id_);  // remove the previous mapping
+    // replacer_->Remove(frame_id);
+    replacer_->ClearAccessHistory(frame_id);
 
     ResetPage(frame_id);
 
@@ -169,13 +171,13 @@ auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
     page_table_->Insert(page_id, frame_id);
     pages_[frame_id].pin_count_ = 1;
     replacer_->RecordAccess(frame_id);
-    replacer_->SetEvictable(frame_id, false);
+    // replacer_->SetEvictable(frame_id, false);
 
-    disk_manager_->ReadPage(page_id, pages_[frame_id].GetData());
+    disk_manager_->ReadPage(page_id, pages_[frame_id].data_);
     latch_.unlock();
     return &pages_[frame_id];
   }
-  LOG_INFO("fail\n");
+  // LOG_INFO("fail\n");
   latch_.unlock();
   return nullptr;
 }
@@ -195,15 +197,15 @@ auto BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) -> Page * {
  */
 auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> bool {
   latch_.lock();
-  LOG_INFO("Want to unpin the page %d ", page_id);
-  if (is_dirty) {
-    LOG_INFO("and set page dirty ");
-  } else {
-    LOG_INFO("and set page undirty");
-  }
+  // LOG_INFO("Want to unpin the page %d ", page_id);
+  // if (is_dirty) {
+  // LOG_INFO("and set page dirty ");
+  // } else {
+  // LOG_INFO("and set page undirty");
+  // }
   frame_id_t frame_id;
   if (!page_table_->Find(page_id, frame_id)) {
-    LOG_INFO("not found\n");
+    // LOG_INFO("not found\n");
     latch_.unlock();
     return false;
   }
@@ -212,19 +214,18 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
   if (is_dirty) {
     pages_[frame_id].is_dirty_ = is_dirty;  // set the dirty bit
   }
-  if (pages_[frame_id].GetPinCount() == 0) {
-    // not found or pin_count == 0
-    LOG_INFO("already unpinned\n");
+  if (pages_[frame_id].pin_count_ == 0) {
+    // LOG_INFO("already unpinned\n");
     latch_.unlock();
     return false;
   }
   pages_[frame_id].pin_count_--;
-  if (pages_[frame_id].GetPinCount() == 0) {
+  if (pages_[frame_id].pin_count_ == 0) {
     // pin_count == 0 => evictable
-    LOG_INFO("(set evictable)");
+    // LOG_INFO("(set evictable)");
     replacer_->SetEvictable(frame_id, true);
   }
-  LOG_INFO("unpin\n");
+  // LOG_INFO("unpin\n");
   latch_.unlock();
   return true;
 }
@@ -242,16 +243,16 @@ auto BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) -> 
  */
 auto BufferPoolManagerInstance::FlushPgImp(page_id_t page_id) -> bool {
   latch_.lock();
-  LOG_INFO("Want to flush page %d, ", page_id);
+  // LOG_INFO("Want to flush page %d, ", page_id);
   frame_id_t frame_id;
   if (!page_table_->Find(page_id, frame_id)) {
-    LOG_INFO("not found\n");
+    // LOG_INFO("not found\n");
     latch_.unlock();
     return false;
   }
-  disk_manager_->WritePage(page_id, pages_[frame_id].GetData());
+  disk_manager_->WritePage(page_id, pages_[frame_id].data_);
   pages_[frame_id].is_dirty_ = false;
-  LOG_INFO("success\n");
+  // LOG_INFO("success\n");
   latch_.unlock();
   return true;
 }
@@ -263,8 +264,8 @@ auto BufferPoolManagerInstance::FlushPgImp(page_id_t page_id) -> bool {
  */
 void BufferPoolManagerInstance::FlushAllPgsImp() {
   for (size_t i = 0; i < pool_size_; i++) {
-    if (pages_[i].GetPageId() != INVALID_PAGE_ID) {
-      FlushPgImp(pages_[i].GetPageId());
+    if (pages_[i].page_id_ != INVALID_PAGE_ID) {
+      FlushPgImp(pages_[i].page_id_);
     }
   }
 }
@@ -284,21 +285,21 @@ void BufferPoolManagerInstance::FlushAllPgsImp() {
  */
 auto BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) -> bool {
   latch_.lock();
-  LOG_INFO("Want to delete page %d, ", page_id);
+  // LOG_INFO("Want to delete page %d, ", page_id);
   frame_id_t frame_id;
   if (!page_table_->Find(page_id, frame_id)) {  // not found
-    LOG_INFO("not found\n");
+    // LOG_INFO("not found\n");
     latch_.unlock();
     return true;
   }
-  if (pages_[frame_id].GetPinCount() > 0) {  // is pinned
-    LOG_INFO("can't delete for pinned\n");
+  if (pages_[frame_id].pin_count_ > 0) {  // is pinned
+    // LOG_INFO("can't delete for pinned\n");
     latch_.unlock();
     return false;
   }
   if (pages_[frame_id].IsDirty()) {
-    LOG_INFO("write back to the disk");
-    disk_manager_->WritePage(page_id, pages_[frame_id].GetData());
+    // LOG_INFO("write back to the disk");
+    disk_manager_->WritePage(page_id, pages_[frame_id].data_);
   }
 
   ResetPage(frame_id);
@@ -307,7 +308,7 @@ auto BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) -> bool {
 
   free_list_.push_back(frame_id);
   DeallocatePage(page_id);
-  LOG_INFO("deleted\n");
+  // LOG_INFO("deleted\n");
   latch_.unlock();
   return true;
 }

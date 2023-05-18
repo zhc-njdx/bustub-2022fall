@@ -83,4 +83,14 @@ auto LRUKReplacer::Size() -> size_t {
   return curr_size_;
 }
 
+void LRUKReplacer::ClearAccessHistory(frame_id_t frame_id) {
+  latch_.lock();
+  if (map_.count(frame_id) == 0) {
+    latch_.unlock();
+    return;
+  }
+  map_[frame_id]->ClearAccessHistory();
+  curr_size_ += map_[frame_id]->SetEvictable(false);
+}
+
 }  // namespace bustub
